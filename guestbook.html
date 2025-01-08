@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Musical Wedding Guestbook</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            padding: 20px;
+        }
+        .staff-line {
+            stroke: black;
+            stroke-width: 1;
+        }
+        .measure-line {
+            stroke: black;
+            stroke-width: 2;
+        }
+        .note {
+            cursor: pointer;
+        }
+        .note:hover {
+            fill: #666;
+        }
+        .note.focused ellipse {
+            fill: #4169E1;
+        }
+        .entry {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f9f9f9;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .entry:hover {
+            background: #f0f0f0;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 10px 0;
+        }
+        .controls button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .controls button:not(:disabled) {
+            background: #4169E1;
+            color: white;
+        }
+        .controls button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .controls button.reset {
+            background: #dc2626;
+            color: white;
+        }
+        input, select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #4169E1;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center; margin-bottom: 20px;">Musical Wedding Guestbook</h1>
+        
+        <!-- Input Controls -->
+        <div class="card">
+            <input type="text" id="guest-name" placeholder="Your Name">
+            <input type="text" id="message" placeholder="Your Message" style="width: 200px;">
+            <button id="save-entry">Save Entry</button>
+        </div>
+
+        <!-- Current Song Section -->
+        <div class="card">
+            <div class="controls">
+                <button id="play-button">&#9658;</button>
+                <button id="pause-button" disabled>&#9208;</button>
+                <button id="stop-button" disabled>&#9209;</button>
+                <button id="reset-button" class="reset">Reset</button>
+                <select id="instrument-select">
+                    <option value="sine">Sine (Flute-like)</option>
+                    <option value="square">Square (8-bit)</option>
+                    <option value="sawtooth">Sawtooth (Buzzy)</option>
+                    <option value="triangle">Triangle (Soft)</option>
+                    <option value="custom">Rich Tone</option>
+                </select>
+            </div>
+
+            <svg id="sheet-music" width="650" height="200" style="background: white;">
+                <!-- Content will be dynamically added -->
+            </svg>
+        </div>
+
+        <!-- Previous Entries -->
+        <div class="card">
+            <h2>Previous Entries</h2>
+            <div id="entries-list"></div>
+        </div>
+    </div>
+
+    <script>
+        // Core setup and constants
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const NOTE_POSITIONS = {
+            'C6': 30, 'B5': 37.5, 'A5': 45, 'G5': 52.5, 'F5': 60,
+            'E5': 67.5, 'D5': 75, 'C5': 82.5, 'B4': 90, 'A4': 97.5,
+            'G4': 105, 'F4': 112.5, 'E4': 120, 'D4': 127.5, 'C4': 135
+        };
+        
+        const NOTE_FREQUENCIES = {
+            'C6': 1046.50, 'B5': 987.77, 'A5': 880.00, 'G5': 783.99,
+            'F5': 698.46, 'E5': 659.25, 'D5': 587.33, 'C5': 523.25,
+            'B4': 493.88, 'A4': 440.00, 'G4': 392.00, 'F4': 349.23,
+            'E4': 329.63, 'D4': 293.66, 'C4': 261.63
+        };
+
+        // Staff setup constants
+        const MEASURE1_START = 150;
+        const MEASURE2_START = 375;
+        const MEASURE1_WIDTH = MEASURE2_START - MEASURE1_START;
+        const MEASURE2_WIDTH = 600 - MEASURE2_START;
+
+        const DEFAULT_POSITIONS = [
+            MEASURE1_START + MEASURE1_WIDTH * 0.125,
+            MEASURE1_START + MEASURE1_WIDTH * 0.375,
+            MEASURE1_START + MEASURE1_WIDTH * 0.625,
+            MEASURE1_START + MEASURE1_WIDTH * 0.875,
+            MEASURE2_START + MEASURE2_WIDTH * 0.125,
+            MEASURE2_START + MEASURE2_WIDTH * 0.375,
+            MEASURE2_START + MEASURE2_WIDTH * 0.625,
+            MEASURE2_START + MEASURE2_WIDTH * 0.875,
+        ];
+
+        let isPlaying = false;
+        let isPaused = false;
+        let currentPlayingNote = null;
+        let playbackTimer = null;
+
+        function playNote(frequency) {
+            const instrumentType = document.getElementById('instrument-select').value;
+            
+            if (instrumentType === 'custom') {
+                const fundamentalOsc = audioContext.createOscillator();
+                const harmonicOsc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                const harmonicGain = audioContext.createGain();
+                
+                fundamentalOsc.type = 'sine';
+                harmonicOsc.type = 'triangle';
+                
+                fundamentalOsc.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                harmonicOsc.frequency.setValueAtTime(frequency * 2, audioContext.currentTime);
+                
+                gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                harmonicGain.gain.setValueAtTime(0.15, audioContext.currentTime);
+                
+                fundamentalOsc.connect(gainNode);
+                harmonicOsc.connect(harmonicGain);
+                harmonicGain.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                fundamentalOsc.start();
+                harmonicOsc.start();
+                fundamentalOsc.stop(audioContext.currentTime + 0.5);
+                harmonicOsc.stop(audioContext.currentTime + 0.5);
+            } else {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.type = instrumentType;
+                oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                
+                gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+        }
+
+        function createStaff() {
+            const svg = document.getElementById('sheet-music');
+            svg.innerHTML = '';
+            
+            // Create the staff lines
+            for (let i = 0; i < 5; i++) {
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute('class', 'staff-line');
+                line.setAttribute('x1', '50');
+                line.setAttribute('y1', (60 + i * 15).toString());
+                line.setAttribute('x2', '600');
+                line.setAttribute('y2', (60 + i * 15).toString());
+                svg.appendChild(line);
+            }
+
+            // Treble Clef Placeholder
+            const clef = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            clef.setAttribute('x', '60');
+            clef.setAttribute('y', '60');
+            clef.setAttribute('width', '30');
+            clef.setAttribute('height', '60');
+            clef.setAttribute('fill', 'none');
+            clef.setAttribute('stroke', 'black');
+            clef.setAttribute('stroke-width', '1');
+            svg.appendChild(clef);
+
+            // Common Time Symbol
+            const timeSignature = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            timeSignature.setAttribute('x', '110');
+            timeSignature.setAttribute('y', '97');
+            timeSignature.setAttribute('font-size', '24');
+            timeSignature.setAttribute('font-family', 'serif');
+            timeSignature.textContent = 'C'; // Using plain 'C' instead of musical symbol
+            svg.appendChild(timeSignature);
+
+            // Measure lines
+            [50, 150, 375, 600].forEach(x => {
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute('class', 'measure-line');
+                line.setAttribute('x1', x.toString());
+                line.setAttribute('y1', '60');
+                line.setAttribute('x2', x.toString());
+                line.setAttribute('y2', '120');
+                svg.appendChild(line);
+            });
+
+            // Create initial notes
+            DEFAULT_POSITIONS.forEach(x => createNote(x, 82.5));
+        }
+
+        function updateNote(noteGroup, y) {
+            const noteHead = noteGroup.querySelector('ellipse');
+            const x = parseFloat(noteHead.getAttribute('cx'));
+            
+            noteHead.setAttribute('cy', y);
+            
+            const stemDirection = y >= 90 ? 'up' : 'down';
+            const noteStem = noteGroup.querySelector('line');
+            
+            if (stemDirection === 'up') {
+                noteStem.setAttribute('x1', (x + 8).toString());
+                noteStem.setAttribute('x2', (x + 8).toString());
+                noteStem.setAttribute('y1', y.toString());
+                noteStem.setAttribute('y2', (y - 35).toString());
+            } else {
+                noteStem.setAttribute('x1', (x - 8).toString());
+                noteStem.setAttribute('x2', (x - 8).toString());
+                noteStem.setAttribute('y1', y.toString());
+                noteStem.setAttribute('y2', (y + 35).toString());
+            }
+            
+            // Remove existing ledger lines
+            noteGroup.querySelectorAll('.ledger-line').forEach(line => line.remove());
+            
+            // Add ledger lines if needed
+            if (y <= 52.5) {
+                for (let ly = 45; ly >= y - 7.5; ly -= 15) {
+                    const ledgerLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    ledgerLine.classList.add('ledger-line');
+                    ledgerLine.setAttribute('x1', (x - 12).toString());
+                    ledgerLine.setAttribute('x2', (x + 12).toString());
+                    ledgerLine.setAttribute('y1', ly.toString());
+                    ledgerLine.setAttribute('y2', ly.toString());
+                    ledgerLine.setAttribute('stroke', 'black');
+                    ledgerLine.setAttribute('stroke-width', '1');
+                    noteGroup.appendChild(ledgerLine);
+                }
+            } else if (y >= 127.5) {
+                for (let ly = 135; ly <= y + 7.5; ly += 15) {
+                    const ledgerLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    ledgerLine.classList.add('ledger-line');
+                    ledgerLine.setAttribute('x1', (x - 12).toString());
+                    ledgerLine.setAttribute('x2', (x + 12).toString());
+                    ledgerLine.setAttribute('y1', ly.toString());
+                    ledgerLine.setAttribute('y2', ly.toString());
+                    ledgerLine.setAttribute('stroke', 'black');
+                    ledgerLine.setAttribute('stroke-width', '1');
+                    noteGroup.appendChild(ledgerLine);
+                }
+            }
+        }
+
+        function createNote(x, initialY) {
+            const svg = document.getElementById('sheet-music');
+            const noteGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            noteGroup.classList.add('note');
+            
+            const noteHead = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+            noteHead.setAttribute('cx', x.toString());
+            noteHead.setAttribute('cy', initialY.toString());
+            noteHead.setAttribute('rx', '8.5');
+            noteHead.setAttribute('ry', '6.5');
+            noteHead.setAttribute('fill', 'black');
+            
+            const noteStem = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            noteStem.setAttribute('stroke', 'black');
+            noteStem.setAttribute('stroke-width', '1.5');
+            
+            noteGroup.appendChild(noteHead);
+            noteGroup.appendChild(noteStem);
+            
+            let isDragging = false;
+            let lastPosition = initialY;
+            
+            noteGroup.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                document.querySelectorAll('.note').forEach(n => n.classList.remove('focused'));
+                noteGroup.classList.add('focused');
+                e.preventDefault();
+                
+                const svgRect = svg.getBoundingClientRect();
+                const updatePosition = (moveEvent) => {
+                    if (!isDragging) return;
+                    
+                    const y = moveEvent.clientY - svgRect.top;
+                    const closestPosition = Object.entries(NOTE_POSITIONS).reduce((closest, [note, pos]) => {
+                        const distance = Math.abs(y - pos);
+                        return distance < closest.distance ? { note, position: pos, distance } : closest;
+                    }, { distance: Infinity }).position;
+                    
+                    if (closestPosition !== lastPosition) {
+                        lastPosition = closestPosition;
+                        updateNote(noteGroup, closestPosition);
+                        const frequency = Object.entries(NOTE_POSITIONS)
+                            .find(([, pos]) => pos === closestPosition)?.[0];
+                        if (frequency) playNote(NOTE_FREQUENCIES[frequency]);
+                    }
+                };
+                
+                const stopDragging = () => {
+                    isDragging = false;
+                    document.removeEventListener('mousemove', updatePosition);
+                    document.removeEventListener('mouseup', stopDragging);
+                };
+                
+                document.addEventListener('mousemove', updatePosition);
+                document.addEventListener('mouseup', stopDragging);
+            });
+            
+            noteGroup.addEventListener('click', (e) => {
+                document.querySelectorAll('.note').forEach(n => n.classList.remove('focused'));
+                noteGroup.classList.add('focused');
+                const y = parseFloat(noteHead.getAttribute('cy'));
+                const frequency = Object.entries(NOTE_POSITIONS)
+                    .find(([, pos]) => pos === y)?.[0];
+                if (frequency) playNote(NOTE_FREQUENCIES[frequency]);
+                e.stopPropagation();
+            });
+            
+            updateNote(noteGroup, initialY);
+            svg.appendChild(noteGroup);
+            return noteGroup;
+        }
+
+        let guestbookEntries = [];
+
+        function saveGuestbookEntry() {
+            const name = document.getElementById('guest-name').value;
+            const message = document.getElementById('message').value;
+            const instrument = document.getElementById('instrument-select').value;
+            
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+
+            const notes = document.querySelectorAll('.note');
+            const melody = Array.from(notes).map(note => {
+                const noteHead = note.querySelector('ellipse');
+                return {
+                    x: parseFloat(noteHead.getAttribute('cx')),
+                    y: parseFloat(noteHead.getAttribute('cy'))
+                };
+            });
+
+            const entry = {
+                id: Date.now(),
+                name,
+                message,
+                instrument,
+                melody,
+                date: new Date().toISOString()
+            };
+
+            guestbookEntries.push(entry);
+            updateEntriesList();
+            resetForm();
+            
+            return entry;
+        }
+
+        function loadEntry(entry) {
+            const svg = document.getElementById('sheet-music');
+            document.querySelectorAll('.note').forEach(note => note.remove());
+            
+            document.getElementById('guest-name').value = entry.name;
+            document.getElementById('message').value = entry.message;
+            document.getElementById('instrument-select').value = entry.instrument;
+            
+            entry.melody.forEach(noteData => {
+                createNote(noteData.x, noteData.y);
+            });
+        }
+
+        function updateEntriesList() {
+            const entriesList = document.getElementById('entries-list');
+            entriesList.innerHTML = '';
+            
+            guestbookEntries.forEach(entry => {
+                const entryDiv = document.createElement('div');
+                entryDiv.className = 'entry';
+                
+                entryDiv.innerHTML = `
+                    <strong>${entry.name}</strong>
+                    ${entry.message ? `<p style="margin: 5px 0">${entry.message}</p>` : ''}
+                    <small style="color: #666">${new Date(entry.date).toLocaleString()}</small>
+                `;
+                
+                entryDiv.addEventListener('click', () => loadEntry(entry));
+                entriesList.appendChild(entryDiv);
+            });
+        }
+
+        function resetForm() {
+            document.getElementById('guest-name').value = '';
+            document.getElementById('message').value = '';
+            createStaff(); // This recreates the staff with default notes
+        }
+
+        function updatePlaybackControls(state) {
+            document.getElementById('play-button').disabled = state === 'playing';
+            document.getElementById('pause-button').disabled = state !== 'playing';
+            document.getElementById('stop-button').disabled = state === 'stopped';
+        }
+
+        function playNextNote(index) {
+            if (!isPlaying || isPaused) return;
+            
+            const notes = document.querySelectorAll('.note');
+            if (index >= notes.length) {
+                stopPlayback();
+                return;
+            }
+            
+            const note = notes[index];
+            const y = parseFloat(note.querySelector('ellipse').getAttribute('cy'));
+            const frequency = Object.entries(NOTE_POSITIONS).find(([, pos]) => pos === y)?.[0];
+            
+            if (frequency) {
+                playNote(NOTE_FREQUENCIES[frequency]);
+                currentPlayingNote = index;
+                
+                // Schedule next note
+                playbackTimer = setTimeout(() => playNextNote(index + 1), 500);
+            }
+        }
+
+        function startPlayback() {
+            isPlaying = true;
+            isPaused = false;
+            currentPlayingNote = 0;
+            updatePlaybackControls('playing');
+            playNextNote(0);
+        }
+
+        function pausePlayback() {
+            isPaused = true;
+            isPlaying = false;
+            if (playbackTimer) clearTimeout(playbackTimer);
+            updatePlaybackControls('paused');
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            isPaused = false;
+            currentPlayingNote = null;
+            if (playbackTimer) clearTimeout(playbackTimer);
+            updatePlaybackControls('stopped');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            createStaff();
+            
+            document.getElementById('save-entry').addEventListener('click', saveGuestbookEntry);
+            document.getElementById('play-button').addEventListener('click', startPlayback);
+            document.getElementById('pause-button').addEventListener('click', pausePlayback);
+            document.getElementById('stop-button').addEventListener('click', stopPlayback);
+            document.getElementById('reset-button').addEventListener('click', resetForm);
+            
+            document.getElementById('sheet-music').addEventListener('click', () => {
+                document.querySelectorAll('.note').forEach(n => n.classList.remove('focused'));
+            });
+
+            // Keyboard controls
+            document.addEventListener('keydown', (e) => {
+                const focusedNote = document.querySelector('.note.focused');
+                if (!focusedNote) return;
+                
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const noteHead = focusedNote.querySelector('ellipse');
+                    const currentY = parseFloat(noteHead.getAttribute('cy'));
+                    const positions = Object.values(NOTE_POSITIONS).sort((a, b) => a - b);
+                    const currentIndex = positions.indexOf(currentY);
+                    
+                    if (currentIndex !== -1) {
+                        const newIndex = e.key === 'ArrowUp'
+                            ? Math.max(0, currentIndex - 1)
+                            : Math.min(positions.length - 1, currentIndex + 1);
+                            
+                        const newY = positions[newIndex];
+                        updateNote(focusedNote, newY);
+                        
+                        const frequency = Object.entries(NOTE_POSITIONS)
+                            .find(([, pos]) => pos === newY)?.[0];
+                        if (frequency) playNote(NOTE_FREQUENCIES[frequency]);
+                    }
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    const notes = Array.from(document.querySelectorAll('.note'));
+                    const currentIndex = notes.indexOf(focusedNote);
+                    
+                    const newIndex = e.key === 'ArrowLeft'
+                        ? (currentIndex === 0 ? notes.length - 1 : currentIndex - 1)
+                        : (currentIndex === notes.length - 1 ? 0 : currentIndex + 1);
+                    
+                    focusedNote.classList.remove('focused');
+                    notes[newIndex].classList.add('focused');
+                    
+                    const y = parseFloat(notes[newIndex].querySelector('ellipse').getAttribute('cy'));
+                    const frequency = Object.entries(NOTE_POSITIONS)
+                        .find(([, pos]) => pos === y)?.[0];
+                    if (frequency) playNote(NOTE_FREQUENCIES[frequency]);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
