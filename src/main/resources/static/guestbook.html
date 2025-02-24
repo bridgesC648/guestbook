@@ -36,15 +36,15 @@
             pointer-events: none;
         }
         #submitTitle {
-             display: block;
-             margin: 0 auto; /* centers the element */
-             font-size: 1.5em;
-             padding: 5px;
-             width: 50%;
-             text-align: center;
-             border: 1px solid #ccc;
-             background-color: #fff;
-         }
+            display: block;
+            margin: 0 auto; /* centers the element */
+            font-size: 1.5em;
+            padding: 5px;
+            width: 50%;
+            text-align: center;
+            border: 1px solid #ccc;
+            background-color: #fff;
+        }
         /* Controls row: play/stop/clear on left; note controls on right */
         #controlsRow {
             display: flex;
@@ -150,8 +150,9 @@
         </div>
         <div id="noteControls">
             <label>Note Controls:</label>
-            <button id="sharpButton">Sharp</button>
-            <button id="flatButton">Flat</button>
+            <button id="sharpButton">♯</button>
+            <button id="flatButton">♭</button>
+            <button id="naturalButton">♮</button>
             <button id="deleteButton">Delete</button>
             <button id="holdLongerButton">Hold Longer</button>
             <button id="holdShorterButton">Hold Shorter</button>
@@ -257,6 +258,25 @@
             x: clientX - rect.left,
             y: clientY - rect.top
         };
+    }
+
+    function getChainIndices(beat) {
+        if (!staffNotes[beat]) return [];
+        // Walk backward to find the start (a note that isn’t tied)
+        let start = beat;
+        while (start > 1 && staffNotes[start] && staffNotes[start].tied) {
+            start--;
+        }
+        // Now collect the chain (the first note plus any consecutive tied notes)
+        let indices = [];
+        let i = start;
+        while (i < NUM_BEATS && staffNotes[i]) {
+            indices.push(i);
+            if (i === NUM_BEATS - 1) break;
+            if (!staffNotes[i + 1] || !staffNotes[i + 1].tied) break;
+            i++;
+        }
+        return indices;
     }
 
     /***** Audio Playback *****/
@@ -405,30 +425,58 @@
             ctx.fillText(symbol, xCenter - (NOTE_RADIUS + 22), yCenter + 8);
         }
 
-        if (note.tied && beat > 0 && staffNotes[beat-1] &&
-            staffNotes[beat-1].pitch === note.pitch &&
-            staffNotes[beat-1].accidental === note.accidental) {
+        if (
+            note.tied &&
+            beat > 0 &&
+            staffNotes[beat - 1] &&
+            staffNotes[beat - 1].pitch === note.pitch &&
+            staffNotes[beat - 1].accidental === note.accidental
+        ) {
+            // Get centers for the previous and current notes.
+            let prevNote = staffNotes[beat - 1];
+            let xPrevCenter = STAFF_LEFT + (beat - 0.5) * BEAT_WIDTH;
+            let xCurrCenter = STAFF_LEFT + (beat + 0.5) * BEAT_WIDTH;
+            let yPrevCenter = yForPitch(prevNote.pitch);
+            let yCurrCenter = yForPitch(note.pitch);
 
-            let xPrev = STAFF_LEFT + (beat - 0.5) * BEAT_WIDTH;
-            let yPrev = yForPitch(note.pitch);
-            // Slight horizontal offsets so the tie doesn’t overlap the note head
-            let xStart = xPrev + NOTE_RADIUS + 2;
-            let xEnd = xCenter - NOTE_RADIUS - 2;
-            let cpX = (xStart + xEnd) / 2;
-            // Adjust the control point so the tie curves nicely away from the note:
-            let cpY = (note.pitch < 7) ? Math.max(yPrev, yCenter) + 25 : Math.min(yPrev, yCenter) - 25;
+            // Determine tie direction: for higher notes, draw the tie above; for lower, below.
+            let tieDirection = (note.pitch >= 7) ? "up" : "down";
+            let offset = 2; // extra separation from the note head edge
+
+            // Calculate attachment points based on tie direction.
+            let y1 =
+                tieDirection === "up"
+                    ? yPrevCenter - (NOTE_RADIUS + offset)
+                    : yPrevCenter + (NOTE_RADIUS + offset);
+            let y2 =
+                tieDirection === "up"
+                    ? yCurrCenter - (NOTE_RADIUS + offset)
+                    : yCurrCenter + (NOTE_RADIUS + offset);
+            let x1 = xPrevCenter;
+            let x2 = xCurrCenter;
+
+            // Control point for the curve.
+            let cpX = (x1 + x2) / 2;
+            let arcHeight = 25;
+            let cpY =
+                tieDirection === "up"
+                    ? Math.min(y1, y2) - arcHeight
+                    : Math.max(y1, y2) + arcHeight;
+
+            // Thickness in the middle of the tie.
+            let tieThickness = 8;
 
             ctx.save();
             ctx.fillStyle = "#000";
             ctx.beginPath();
-            // Upper edge of the tie
-            ctx.moveTo(xStart, yPrev);
-            ctx.quadraticCurveTo(cpX, cpY, xEnd, yCenter);
-            // Lower edge of the tie (create a closed, filled shape)
-            if (note.pitch < 7) {
-                ctx.quadraticCurveTo(cpX, cpY + 8, xStart, yPrev);
+            // Draw the primary edge of the tie.
+            ctx.moveTo(x1, y1);
+            ctx.quadraticCurveTo(cpX, cpY, x2, y2);
+            // Draw the opposite edge, offset by tieThickness.
+            if (tieDirection === "up") {
+                ctx.quadraticCurveTo(cpX, cpY + tieThickness, x1, y1);
             } else {
-                ctx.quadraticCurveTo(cpX, cpY - 8, xStart, yPrev);
+                ctx.quadraticCurveTo(cpX, cpY - tieThickness, x1, y1);
             }
             ctx.closePath();
             ctx.fill();
@@ -445,13 +493,49 @@
         let pos = getCanvasPos(e);
         let beat = beatForX(pos.x);
         if (beat < 1) return; // Ignore notation-only area
-        let pitch = pitchForY(pos.y);
-        staffNotes[beat] = { pitch, accidental: currentAccidental };
-        selectedBeat = beat;
-        drawStaff();
-        playTone(staffNotes[beat], false);
+
+        if (staffNotes[beat]) {
+            // There is already a note at this beat.
+            // Compute its center (using its pitch) to see if we clicked directly on it.
+            let note = staffNotes[beat];
+            let xCenter = STAFF_LEFT + (beat + 0.5) * BEAT_WIDTH;
+            let yCenter = yForPitch(note.pitch);
+            let dx = pos.x - xCenter;
+            let dy = pos.y - yCenter;
+            let distance = Math.sqrt(dx * dx + dy * dy);
+            let threshold = NOTE_RADIUS + 5; // Adjust this value as needed
+
+            if (distance <= threshold) {
+                // Tapped directly on the note head:
+                let chainIndices = getChainIndices(beat);
+                selectedBeat = chainIndices[0];
+                dragBeat = selectedBeat;
+                drawStaff();
+                playTone(note, false);
+            } else {
+                // Clicked away from the center of the note head:
+                // Update the entire chain to the new pitch (and clear accidentals)
+                let newPitch = pitchForY(pos.y);
+                let chainIndices = getChainIndices(beat);
+                chainIndices.forEach(i => {
+                    staffNotes[i].pitch = newPitch;
+                    staffNotes[i].accidental = "natural";
+                });
+                selectedBeat = chainIndices[0];
+                dragBeat = selectedBeat;
+                drawStaff();
+                playTone(staffNotes[chainIndices[0]], false);
+            }
+        } else {
+            // No note exists at this beat: create a new note using currentAccidental.
+            let pitch = pitchForY(pos.y);
+            staffNotes[beat] = { pitch, accidental: currentAccidental };
+            selectedBeat = beat;
+            dragBeat = beat;
+            drawStaff();
+            playTone(staffNotes[beat], false);
+        }
         isDragging = true;
-        dragBeat = beat;
     }
     canvas.addEventListener("mousemove", pointerMove);
     canvas.addEventListener("touchmove", pointerMove);
@@ -460,9 +544,18 @@
         e.preventDefault();
         let pos = getCanvasPos(e);
         let newPitch = pitchForY(pos.y);
-        if (staffNotes[dragBeat] && staffNotes[dragBeat].pitch !== newPitch) {
-            staffNotes[dragBeat].pitch = newPitch;
-            playTone(staffNotes[dragBeat], true);
+
+        let chainIndices = getChainIndices(dragBeat);
+        if (chainIndices.length === 0) return;
+
+        // Only update if the pitch has actually changed from the chain's starting note.
+        let currentPitch = staffNotes[chainIndices[0]].pitch;
+        if (newPitch !== currentPitch) {
+            chainIndices.forEach(i => {
+                staffNotes[i].pitch = newPitch;
+                staffNotes[i].accidental = "natural"; // clear accidental when dragging
+            });
+            playTone(staffNotes[chainIndices[0]], true);
             drawStaff();
         }
     }
@@ -476,22 +569,23 @@
     }
     window.addEventListener("keydown", e => {
         if (selectedBeat < 1 || selectedBeat === -1) return;
+        let chainIndices = getChainIndices(selectedBeat);
         switch (e.key) {
             case "ArrowUp":
-                if (staffNotes[selectedBeat]) {
-                    let newPitch = Math.min(15, staffNotes[selectedBeat].pitch + 1);
-                    staffNotes[selectedBeat].pitch = newPitch;
-                    playTone(staffNotes[selectedBeat]);
-                    drawStaff();
-                }
+                chainIndices.forEach(i => {
+                    staffNotes[i].pitch = Math.min(15, staffNotes[i].pitch + 1);
+                    staffNotes[i].accidental = "natural"; // reset accidental when moving
+                });
+                playTone(staffNotes[chainIndices[0]]);
+                drawStaff();
                 break;
             case "ArrowDown":
-                if (staffNotes[selectedBeat]) {
-                    let newPitch = Math.max(1, staffNotes[selectedBeat].pitch - 1);
-                    staffNotes[selectedBeat].pitch = newPitch;
-                    playTone(staffNotes[selectedBeat]);
-                    drawStaff();
-                }
+                chainIndices.forEach(i => {
+                    staffNotes[i].pitch = Math.max(1, staffNotes[i].pitch - 1);
+                    staffNotes[i].accidental = "natural"; // reset accidental when moving
+                });
+                playTone(staffNotes[chainIndices[0]]);
+                drawStaff();
                 break;
             case "ArrowLeft":
                 for (let b = selectedBeat - 1; b >= 2; b--) {
@@ -527,7 +621,7 @@
         isPlaying = true;
         const tempo = 120;
         const beatDuration = 60 / tempo;
-        let b = 2;
+        let b = 1;
         while(b < NUM_BEATS) {
             if (staffNotes[b] && !staffNotes[b].tied) {
                 let note = staffNotes[b];
@@ -542,7 +636,7 @@
                 let duration = beatDuration * 0.9 * chainLength;
                 let timeoutId = setTimeout(() => {
                     playTone(note, false, duration);
-                }, (b - 2) * beatDuration * 1000);
+                }, (b - 1) * beatDuration * 1000);
                 playTimeouts.push(timeoutId);
                 b += chainLength;
                 continue;
@@ -559,19 +653,37 @@
     /***** Note Control Functionality *****/
     document.getElementById("sharpButton").addEventListener("click", () => {
         if (selectedBeat >= 2 && staffNotes[selectedBeat]) {
-            staffNotes[selectedBeat].accidental = "sharp";
+            let chainIndices = getChainIndices(selectedBeat);
+            chainIndices.forEach(i => {
+                staffNotes[i].accidental = "sharp";
+            });
             drawStaff();
         }
     });
     document.getElementById("flatButton").addEventListener("click", () => {
         if (selectedBeat >= 2 && staffNotes[selectedBeat]) {
-            staffNotes[selectedBeat].accidental = "flat";
+            let chainIndices = getChainIndices(selectedBeat);
+            chainIndices.forEach(i => {
+                staffNotes[i].accidental = "flat";
+            });
+            drawStaff();
+        }
+    });
+    document.getElementById("naturalButton").addEventListener("click", () => {
+        if (selectedBeat >= 2 && staffNotes[selectedBeat]) {
+            let chainIndices = getChainIndices(selectedBeat);
+            chainIndices.forEach(i => {
+                staffNotes[i].accidental = "natural";
+            });
             drawStaff();
         }
     });
     document.getElementById("deleteButton").addEventListener("click", () => {
         if (selectedBeat >= 2 && staffNotes[selectedBeat]) {
-            staffNotes[selectedBeat] = null;
+            let chainIndices = getChainIndices(selectedBeat);
+            chainIndices.forEach(i => {
+                staffNotes[i] = null;
+            });
             selectedBeat = -1;
             drawStaff();
         }
@@ -581,17 +693,19 @@
             alert("Select a note to hold.");
             return;
         }
-        if (selectedBeat >= NUM_BEATS - 1) {
+        let chainIndices = getChainIndices(selectedBeat);
+        let lastIndex = chainIndices[chainIndices.length - 1];
+        if (lastIndex >= NUM_BEATS - 1) {
             alert("Cannot extend beyond the last beat.");
             return;
         }
-        let baseNote = staffNotes[selectedBeat];
-        staffNotes[selectedBeat + 1] = {
+        let baseNote = staffNotes[lastIndex];
+        staffNotes[lastIndex + 1] = {
             pitch: baseNote.pitch,
             accidental: baseNote.accidental,
             tied: true
         };
-        selectedBeat = selectedBeat + 1;
+        selectedBeat = lastIndex + 1;
         drawStaff();
         playTone(staffNotes[selectedBeat], true);
     }
@@ -601,25 +715,15 @@
             alert("No note selected to shorten.");
             return;
         }
-        if (staffNotes[selectedBeat].tied) {
-            staffNotes[selectedBeat] = null;
-            selectedBeat--;
-            drawStaff();
+        let chainIndices = getChainIndices(selectedBeat);
+        if (chainIndices.length === 1) {
+            alert("No held note to shorten.");
         } else {
-            let baseNote = staffNotes[selectedBeat];
-            let current = selectedBeat;
-            while (current < NUM_BEATS - 1 && staffNotes[current + 1] && staffNotes[current + 1].tied &&
-            staffNotes[current + 1].pitch === baseNote.pitch &&
-            staffNotes[current + 1].accidental === baseNote.accidental) {
-                current++;
-            }
-            if (current > selectedBeat) {
-                staffNotes[current] = null;
-                selectedBeat = current - 1;
-                drawStaff();
-            } else {
-                alert("No held note to shorten.");
-            }
+            let lastIndex = chainIndices[chainIndices.length - 1];
+            staffNotes[lastIndex] = null;
+            // Optionally update selectedBeat to the new end of the chain.
+            selectedBeat = chainIndices[chainIndices.length - 2];
+            drawStaff();
         }
     }
     document.getElementById("holdShorterButton").addEventListener("click", holdShorter);
@@ -707,7 +811,7 @@
         stopPlayback();
         const tempo = 120;
         const beatDuration = 60 / tempo;
-        let b = 2;
+        let b = 1;
         while (b < song.length) {
             if (song[b] && !song[b].tied) {
                 let note = song[b];
@@ -722,7 +826,7 @@
                 let duration = beatDuration * 0.9 * chainLength;
                 let timeoutId = setTimeout(() => {
                     playTone(note, false, duration);
-                }, (b - 2) * beatDuration * 1000);
+                }, (b - 1) * beatDuration * 1000);
                 playTimeouts.push(timeoutId);
                 b += chainLength;
                 continue;
