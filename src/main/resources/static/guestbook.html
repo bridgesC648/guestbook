@@ -45,19 +45,40 @@
             border: 1px solid #ccc;
             background-color: #fff;
         }
-        /* Controls row: play/stop/clear on left; note controls on right */
+        /* Controls row: song control buttons on left; note controls on right */
         #controlsRow {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
         }
-        #playControls, #noteControls {
+        /* Uniform style & height for song & note control buttons */
+        #playControls button,
+        #noteControls button {
+            height: 40px;
+            padding: 8px 16px;
+            font-size: 1em;
+            border: none;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #playControls button:hover,
+        #noteControls button:hover {
+            background-color: #0056b3;
+        }
+        /* Note controls remain in their own container */
+        #noteControls {
             display: flex;
             align-items: center;
             gap: 5px;
         }
         #noteControls label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        #playControls label {
             font-weight: bold;
             margin-right: 5px;
         }
@@ -72,14 +93,18 @@
             gap: 10px;
             align-items: center;
         }
+        /* Force the name and comment inputs to be the same width */
+        #submitName,
+        #submitComment {
+            width: 60%;
+            box-sizing: border-box;
+        }
         /* Ensure comment box uses sans-serif (not Courier) */
         #submitComment {
             font-family: sans-serif;
-            width: 60%;
             height: 80px;
         }
         #submitName {
-            width: 60%;
             padding: 5px;
         }
         #submissionForm button {
@@ -103,6 +128,14 @@
             text-align: center;
             word-break: break-word;
         }
+        /* Limit comment column to 50% of table width */
+        #submissionsTable {
+            table-layout: fixed;
+        }
+        #submissionsTable th:nth-child(1) { width: 20%; }
+        #submissionsTable th:nth-child(2) { width: 20%; }
+        #submissionsTable th:nth-child(3) { width: 50%; }
+        #submissionsTable th:nth-child(4) { width: 10%; }
         /* Pagination Controls */
         #paginationControls {
             display: flex;
@@ -121,12 +154,12 @@
 </head>
 <body>
 <div class="container">
-    <h1>Musical Guestbook</h1>
+    <h1>Christopher and Raymond's Musical Guestbook</h1>
 
     <!-- Staff Area (canvas with treble clef and overlaid title input) -->
     <div id="staffContainer">
         <!-- Song Title input overlaid on the staff -->
-        <input type="text" id="submitTitle" placeholder="Song Title">
+        <input type="text" id="submitTitle" placeholder="Enter a song title">
         <!-- Treble clef image -->
         <img id="trebleClef" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='45' height='100'><text x='0' y='70' font-size='80'>𝄞</text></svg>" alt="Treble Clef">
         <canvas id="staffCanvas" width="1200" height="200"></canvas>
@@ -134,18 +167,19 @@
 
     <!-- Controls Row -->
     <div id="controlsRow">
+        <div id="instrumentSelectContainer">
+            <label for="instrumentSelect">Instrument: </label>
+            <select id="instrumentSelect">
+                <option value="sine">Sine</option>
+                <option value="square">Square</option>
+                <option value="sawtooth">Sawtooth</option>
+                <option value="triangle">Triangle</option>
+            </select>
+        </div>
         <div id="playControls">
-            <div id="instrumentSelectContainer">
-                <label for="instrumentSelect">Instrument: </label>
-                <select id="instrumentSelect">
-                    <option value="sine">Sine</option>
-                    <option value="square">Square</option>
-                    <option value="sawtooth">Sawtooth</option>
-                    <option value="triangle">Triangle</option>
-                </select>
-            </div>
-            <button id="playButton">Play</button>
-            <button id="stopButton">Stop</button>
+            <label>Song Controls:</label>
+            <button id="playButton">&#9658;</button>
+            <button id="stopButton">&#9632;</button>
             <button id="clearButton">Clear</button>
         </div>
         <div id="noteControls">
@@ -419,10 +453,18 @@
         ctx.stroke();
 
         if (note.accidental && note.accidental !== "natural") {
-            ctx.font = "24px italic serif";
+            ctx.font = "32px italic serif";
             ctx.fillStyle = "#000";
-            let symbol = (note.accidental === "sharp") ? "#" : "♭";
-            ctx.fillText(symbol, xCenter - (NOTE_RADIUS + 22), yCenter + 8);
+            let symbol;
+            let yAdd;
+            if (note.accidental === "sharp") {
+                yAdd = 11;
+                symbol = "#";
+            } else {
+                yAdd = 5
+                symbol = "♭";
+            }
+            ctx.fillText(symbol, xCenter - (NOTE_RADIUS + 19), yCenter + yAdd);
         }
 
         if (
@@ -936,7 +978,6 @@
         }
     });
     document.getElementById("nextPage").addEventListener("click", () => {
-        // For simplicity, always allow next. In production, you might want to check if fewer than PAGE_SIZE items were returned.
         currentPage++;
         fetchSubmissions();
     });
