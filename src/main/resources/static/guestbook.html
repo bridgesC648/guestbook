@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Christopher and Raymond's Musical Guestbook</title>
+    <style>
+        /* Center all content */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: sans-serif;
+        }
+        h1, h2 {
+            text-align: center;
+            margin-bottom: 5px;
+        }
+        #staffContainer {
+            position: relative;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        #staffCanvas {
+            border: 1px solid #ccc;
+            touch-action: none;
+            margin: 0 auto;
+            display: block;
+        }
+        /* Treble clef image (position as needed) */
+        #trebleClef {
+            position: absolute;
+            left: 110px;
+            top: 105px;
+            height: 90px;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+        #submitTitle {
+             display: block;
+             margin: 0 auto; /* centers the element */
+             font-size: 1.5em;
+             padding: 5px;
+             width: 50%;
+             text-align: center;
+             border: 1px solid #ccc;
+             background-color: #fff;
+         }
+        /* Controls row: play/stop/clear on left; note controls on right */
+        #controlsRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #playControls, #noteControls {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        #noteControls label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        /* Submission form (below controls): only name and comment with submit at bottom */
+        #submissionFormContainer {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #submissionForm {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        /* Ensure comment box uses sans-serif (not Courier) */
+        #submitComment {
+            font-family: sans-serif;
+            width: 60%;
+            height: 80px;
+        }
+        #submitName {
+            width: 60%;
+            padding: 5px;
+        }
+        #submissionForm button {
+            padding: 8px 16px;
+            font-size: 1em;
+        }
+        /* Submissions Table */
+        #submissionsTableContainer {
+            margin-top: 30px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 10px;
+        }
+        table, th, td {
+            border: 1px solid #aaa;
+        }
+        th, td {
+            padding: 4px;
+            text-align: center;
+            word-break: break-word;
+        }
+        /* Pagination Controls */
+        #paginationControls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+            gap: 10px;
+        }
+        /* Simple error styling */
+        #submissionError {
+            color: red;
+            margin-top: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Musical Guestbook</h1>
+
+    <!-- Staff Area (canvas with treble clef and overlaid title input) -->
+    <div id="staffContainer">
+        <!-- Song Title input overlaid on the staff -->
+        <input type="text" id="submitTitle" placeholder="Song Title">
+        <!-- Treble clef image -->
+        <img id="trebleClef" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='45' height='100'><text x='0' y='70' font-size='80'>𝄞</text></svg>" alt="Treble Clef">
+        <canvas id="staffCanvas" width="1200" height="200"></canvas>
+    </div>
+
+    <!-- Controls Row -->
+    <div id="controlsRow">
+        <div id="playControls">
+            <div id="instrumentSelectContainer">
+                <label for="instrumentSelect">Instrument: </label>
+                <select id="instrumentSelect">
+                    <option value="sine">Sine</option>
+                    <option value="square">Square</option>
+                    <option value="sawtooth">Sawtooth</option>
+                    <option value="triangle">Triangle</option>
+                </select>
+            </div>
+            <button id="playButton">Play</button>
+            <button id="stopButton">Stop</button>
+            <button id="clearButton">Clear</button>
+        </div>
+        <div id="noteControls">
+            <label>Note Controls:</label>
+            <button id="sharpButton">Sharp</button>
+            <button id="flatButton">Flat</button>
+            <button id="deleteButton">Delete</button>
+            <button id="holdLongerButton">Hold Longer</button>
+            <button id="holdShorterButton">Hold Shorter</button>
+        </div>
+    </div>
+
+    <!-- Submission Form: only Name and Comment, with Submit at the bottom -->
+    <div id="submissionFormContainer">
+        <h2>Sign Here</h2>
+        <form id="submissionForm">
+            <input type="text" id="submitName" placeholder="Guest name(s) *" required>
+            <textarea id="submitComment" placeholder="Leave a message!"></textarea>
+            <button type="submit">Submit</button>
+        </form>
+        <div id="submissionError"></div>
+    </div>
+
+    <!-- Submissions Table with pagination -->
+    <div id="submissionsTableContainer">
+        <h2>Submitted Compositions</h2>
+        <table id="submissionsTable">
+            <thead>
+            <tr>
+                <th>Guest name(s)</th>
+                <th>Song title</th>
+                <th>Comment</th>
+                <th>Action</th>
+            </tr>
+            </thead>
+            <tbody>
+            <!-- Submissions will be populated here via web calls -->
+            </tbody>
+        </table>
+        <div id="paginationControls">
+            <button id="prevPage">Previous</button>
+            <span id="currentPage">Page 1</span>
+            <button id="nextPage">Next</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    /***** Global Variables & Constants *****/
+    const NUM_BEATS = 17; // Beat 0 for notation only; 1-17 for music
+    const measureDivisions = [0, 1, 5, 9, 13, 17];
+    const pitchMidi = [null, 60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84];
+    let staffNotes = new Array(NUM_BEATS).fill(null);
+    let selectedBeat = -1;
+    let currentAccidental = "natural";
+    let currentInstrument = "sine";
+
+    const canvas = document.getElementById("staffCanvas");
+    const ctx = canvas.getContext("2d");
+    const STAFF_LEFT = 100;
+    const STAFF_RIGHT = canvas.width - 100;
+    const STAFF_WIDTH = STAFF_RIGHT - STAFF_LEFT;
+    const BEAT_WIDTH = STAFF_WIDTH / NUM_BEATS;
+    const staffLinePitches = [3, 5, 7, 9, 11];
+    const NUM_PITCHES = 15;
+    const noteSpacing = 10;
+    const totalStaffHeight = (NUM_PITCHES - 1) * noteSpacing;
+    const STAFF_TOP = (canvas.height - totalStaffHeight) / 2;
+    const NOTE_RADIUS = 9;
+
+    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let isDragging = false;
+    let dragBeat = null;
+    let playTimeouts = [];
+    let isPlaying = false;
+
+    // Pagination variables
+    let currentPage = 0;
+    const PAGE_SIZE = 2;
+
+    /***** Utility Functions *****/
+    function yForPitch(pitchIndex) {
+        return STAFF_TOP + (NUM_PITCHES - pitchIndex) * noteSpacing;
+    }
+
+    function beatForX(x) {
+        let b = Math.floor((x - STAFF_LEFT) / BEAT_WIDTH);
+        return Math.max(0, Math.min(NUM_BEATS - 1, b));
+    }
+
+    function pitchForY(y) {
+        let approx = NUM_PITCHES - ((y - STAFF_TOP) / noteSpacing);
+        let p = Math.round(approx);
+        return Math.max(1, Math.min(NUM_PITCHES, p));
+    }
+
+    function getCanvasPos(e) {
+        let rect = canvas.getBoundingClientRect();
+        let clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+        };
+    }
+
+    /***** Audio Playback *****/
+    function playTone(note, isPreview = false, durationOverride = null) {
+        if (!note) return;
+        const tempo = 120;
+        const beatDuration = 60 / tempo;
+        const duration = isPreview ? 0.1 : (durationOverride !== null ? durationOverride : (beatDuration * 0.9));
+        let midi = pitchMidi[note.pitch];
+        if (note.accidental === "sharp") midi += 1;
+        if (note.accidental === "flat") midi -= 1;
+        let freq = 440 * Math.pow(2, (midi - 69) / 12);
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = currentInstrument;
+        osc.frequency.value = freq;
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        let now = audioCtx.currentTime;
+        gainNode.gain.setValueAtTime(0.2, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.start(now);
+        osc.stop(now + duration);
+    }
+
+    function drawStaff() {
+        const gap = 5;
+        const extendedStaffEnd = STAFF_RIGHT + gap + 3;
+        const thickBarX = STAFF_RIGHT + gap;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1;
+        staffLinePitches.forEach(pitchIndex => {
+            let y = yForPitch(pitchIndex);
+            ctx.beginPath();
+            ctx.moveTo(STAFF_LEFT, y);
+            ctx.lineTo(extendedStaffEnd, y);
+            ctx.stroke();
+        });
+
+        // Draw vertical measure lines.
+        let topLineY = yForPitch(11);
+        let botLineY = yForPitch(3);
+        measureDivisions.forEach(div => {
+            if (div === 1) return;
+            let x = STAFF_LEFT + div * BEAT_WIDTH;
+            ctx.beginPath();
+            ctx.moveTo(x, topLineY);
+            ctx.lineTo(x, botLineY);
+            ctx.stroke();
+        });
+
+        // Draw notes (or rests for beats 2+)
+        for (let b = 0; b < NUM_BEATS; b++) {
+            if (staffNotes[b]) {
+                drawNote(staffNotes[b], b, (b === selectedBeat));
+            } else if (b > 0) {
+                drawRest(b);
+            }
+        }
+
+        ctx.save();
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(thickBarX, topLineY);
+        ctx.lineTo(thickBarX, botLineY);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawRest(beat) {
+        const REST_OFFSET = 10;
+        let xCenter = STAFF_LEFT + (beat + 0.5) * BEAT_WIDTH + REST_OFFSET;
+        let yCenter = yForPitch(7);
+        ctx.save();
+        ctx.fillStyle = "#000";
+        ctx.font = "60px italic serif";
+        ctx.fillText("𝄽", xCenter - 24, yCenter + 18);
+        ctx.restore();
+    }
+
+    // Draw ledger lines for notes outside the staff range
+    function drawLedgerLines(note, x, radius) {
+        ctx.save();
+        ctx.strokeStyle = "#000";
+        if (note.pitch < 3) {
+            for (let p = 1; p >= note.pitch; p -= 2) {
+                let ly = yForPitch(p);
+                ctx.beginPath();
+                ctx.moveTo(x - radius - 4, ly);
+                ctx.lineTo(x + radius + 4, ly);
+                ctx.stroke();
+            }
+        }
+        if (note.pitch > 11) {
+            for (let p = 13; p <= note.pitch; p += 2) {
+                let ly = yForPitch(p);
+                ctx.beginPath();
+                ctx.moveTo(x - radius - 4, ly);
+                ctx.lineTo(x + radius + 4, ly);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+
+    // Draw a quarter note with stem and accidental styling
+    function drawNote(note, beat, isSelected) {
+        let xCenter = STAFF_LEFT + (beat + 0.5) * BEAT_WIDTH;
+        let yCenter = yForPitch(note.pitch);
+
+        if (isSelected) {
+            ctx.save();
+            ctx.fillStyle = "rgba(0, 150, 255, 0.3)";
+            ctx.beginPath();
+            ctx.arc(xCenter, yCenter, NOTE_RADIUS + 10, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        drawLedgerLines(note, xCenter, NOTE_RADIUS);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(xCenter, yCenter, NOTE_RADIUS, NOTE_RADIUS + 3, 1, 0, 2 * Math.PI);
+        ctx.fill();
+
+        const stemLength = 55;
+        ctx.beginPath();
+        if (note.pitch >= 7) {
+            ctx.moveTo(xCenter - NOTE_RADIUS - 2, yCenter);
+            ctx.lineTo(xCenter - NOTE_RADIUS - 2, yCenter + stemLength);
+        } else {
+            ctx.moveTo(xCenter + NOTE_RADIUS + 2, yCenter);
+            ctx.lineTo(xCenter + NOTE_RADIUS + 2, yCenter - stemLength);
+        }
+        ctx.stroke();
+
+        if (note.accidental && note.accidental !== "natural") {
+            ctx.font = "24px italic serif";
+            ctx.fillStyle = "#000";
+            let symbol = (note.accidental === "sharp") ? "#" : "♭";
+            ctx.fillText(symbol, xCenter - (NOTE_RADIUS + 22), yCenter + 8);
+        }
+
+        if (note.tied && beat > 0 && staffNotes[beat-1] &&
+            staffNotes[beat-1].pitch === note.pitch &&
+            staffNotes[beat-1].accidental === note.accidental) {
+
+            let xPrev = STAFF_LEFT + (beat - 0.5) * BEAT_WIDTH;
+            let yPrev = yForPitch(note.pitch);
+            // Slight horizontal offsets so the tie doesn’t overlap the note head
+            let xStart = xPrev + NOTE_RADIUS + 2;
+            let xEnd = xCenter - NOTE_RADIUS - 2;
+            let cpX = (xStart + xEnd) / 2;
+            // Adjust the control point so the tie curves nicely away from the note:
+            let cpY = (note.pitch < 7) ? Math.max(yPrev, yCenter) + 25 : Math.min(yPrev, yCenter) - 25;
+
+            ctx.save();
+            ctx.fillStyle = "#000";
+            ctx.beginPath();
+            // Upper edge of the tie
+            ctx.moveTo(xStart, yPrev);
+            ctx.quadraticCurveTo(cpX, cpY, xEnd, yCenter);
+            // Lower edge of the tie (create a closed, filled shape)
+            if (note.pitch < 7) {
+                ctx.quadraticCurveTo(cpX, cpY + 8, xStart, yPrev);
+            } else {
+                ctx.quadraticCurveTo(cpX, cpY - 8, xStart, yPrev);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+        ctx.restore();
+    }
+
+    /***** Event Handling: Pointer Down/Move/Up *****/
+    canvas.addEventListener("mousedown", pointerDown);
+    canvas.addEventListener("touchstart", pointerDown);
+    function pointerDown(e) {
+        e.preventDefault();
+        let pos = getCanvasPos(e);
+        let beat = beatForX(pos.x);
+        if (beat < 1) return; // Ignore notation-only area
+        let pitch = pitchForY(pos.y);
+        staffNotes[beat] = { pitch, accidental: currentAccidental };
+        selectedBeat = beat;
+        drawStaff();
+        playTone(staffNotes[beat], false);
+        isDragging = true;
+        dragBeat = beat;
+    }
+    canvas.addEventListener("mousemove", pointerMove);
+    canvas.addEventListener("touchmove", pointerMove);
+    function pointerMove(e) {
+        if (!isDragging || dragBeat === null) return;
+        e.preventDefault();
+        let pos = getCanvasPos(e);
+        let newPitch = pitchForY(pos.y);
+        if (staffNotes[dragBeat] && staffNotes[dragBeat].pitch !== newPitch) {
+            staffNotes[dragBeat].pitch = newPitch;
+            playTone(staffNotes[dragBeat], true);
+            drawStaff();
+        }
+    }
+    canvas.addEventListener("mouseup", pointerUp);
+    canvas.addEventListener("touchend", pointerUp);
+    function pointerUp(e) {
+        if (isDragging) {
+            isDragging = false;
+            dragBeat = null;
+        }
+    }
+    window.addEventListener("keydown", e => {
+        if (selectedBeat < 1 || selectedBeat === -1) return;
+        switch (e.key) {
+            case "ArrowUp":
+                if (staffNotes[selectedBeat]) {
+                    let newPitch = Math.min(15, staffNotes[selectedBeat].pitch + 1);
+                    staffNotes[selectedBeat].pitch = newPitch;
+                    playTone(staffNotes[selectedBeat]);
+                    drawStaff();
+                }
+                break;
+            case "ArrowDown":
+                if (staffNotes[selectedBeat]) {
+                    let newPitch = Math.max(1, staffNotes[selectedBeat].pitch - 1);
+                    staffNotes[selectedBeat].pitch = newPitch;
+                    playTone(staffNotes[selectedBeat]);
+                    drawStaff();
+                }
+                break;
+            case "ArrowLeft":
+                for (let b = selectedBeat - 1; b >= 2; b--) {
+                    if (staffNotes[b]) {
+                        selectedBeat = b;
+                        playTone(staffNotes[b], true);
+                        drawStaff();
+                        break;
+                    }
+                }
+                break;
+            case "ArrowRight":
+                for (let b = selectedBeat + 1; b < NUM_BEATS; b++) {
+                    if (staffNotes[b]) {
+                        selectedBeat = b;
+                        playTone(staffNotes[b], true);
+                        drawStaff();
+                        break;
+                    }
+                }
+                break;
+        }
+    });
+
+    /***** Playback Controls *****/
+    function stopPlayback() {
+        playTimeouts.forEach(id => clearTimeout(id));
+        playTimeouts = [];
+        isPlaying = false;
+    }
+    function playStaff() {
+        stopPlayback();
+        isPlaying = true;
+        const tempo = 120;
+        const beatDuration = 60 / tempo;
+        let b = 2;
+        while(b < NUM_BEATS) {
+            if (staffNotes[b] && !staffNotes[b].tied) {
+                let note = staffNotes[b];
+                let chainLength = 1;
+                while(b + chainLength < NUM_BEATS &&
+                staffNotes[b + chainLength] &&
+                staffNotes[b + chainLength].tied &&
+                staffNotes[b + chainLength].pitch === note.pitch &&
+                staffNotes[b + chainLength].accidental === note.accidental) {
+                    chainLength++;
+                }
+                let duration = beatDuration * 0.9 * chainLength;
+                let timeoutId = setTimeout(() => {
+                    playTone(note, false, duration);
+                }, (b - 2) * beatDuration * 1000);
+                playTimeouts.push(timeoutId);
+                b += chainLength;
+                continue;
+            }
+            b++;
+        }
+    }
+    document.getElementById("instrumentSelect").addEventListener("change", (e) => {
+        currentInstrument = e.target.value;
+    });
+    document.getElementById("playButton").addEventListener("click", playStaff);
+    document.getElementById("stopButton").addEventListener("click", stopPlayback);
+
+    /***** Note Control Functionality *****/
+    document.getElementById("sharpButton").addEventListener("click", () => {
+        if (selectedBeat >= 2 && staffNotes[selectedBeat]) {
+            staffNotes[selectedBeat].accidental = "sharp";
+            drawStaff();
+        }
+    });
+    document.getElementById("flatButton").addEventListener("click", () => {
+        if (selectedBeat >= 2 && staffNotes[selectedBeat]) {
+            staffNotes[selectedBeat].accidental = "flat";
+            drawStaff();
+        }
+    });
+    document.getElementById("deleteButton").addEventListener("click", () => {
+        if (selectedBeat >= 2 && staffNotes[selectedBeat]) {
+            staffNotes[selectedBeat] = null;
+            selectedBeat = -1;
+            drawStaff();
+        }
+    });
+    function holdLonger() {
+        if (selectedBeat < 1 || !staffNotes[selectedBeat]) {
+            alert("Select a note to hold.");
+            return;
+        }
+        if (selectedBeat >= NUM_BEATS - 1) {
+            alert("Cannot extend beyond the last beat.");
+            return;
+        }
+        let baseNote = staffNotes[selectedBeat];
+        staffNotes[selectedBeat + 1] = {
+            pitch: baseNote.pitch,
+            accidental: baseNote.accidental,
+            tied: true
+        };
+        selectedBeat = selectedBeat + 1;
+        drawStaff();
+        playTone(staffNotes[selectedBeat], true);
+    }
+    document.getElementById("holdLongerButton").addEventListener("click", holdLonger);
+    function holdShorter() {
+        if (selectedBeat < 1 || !staffNotes[selectedBeat]) {
+            alert("No note selected to shorten.");
+            return;
+        }
+        if (staffNotes[selectedBeat].tied) {
+            staffNotes[selectedBeat] = null;
+            selectedBeat--;
+            drawStaff();
+        } else {
+            let baseNote = staffNotes[selectedBeat];
+            let current = selectedBeat;
+            while (current < NUM_BEATS - 1 && staffNotes[current + 1] && staffNotes[current + 1].tied &&
+            staffNotes[current + 1].pitch === baseNote.pitch &&
+            staffNotes[current + 1].accidental === baseNote.accidental) {
+                current++;
+            }
+            if (current > selectedBeat) {
+                staffNotes[current] = null;
+                selectedBeat = current - 1;
+                drawStaff();
+            } else {
+                alert("No held note to shorten.");
+            }
+        }
+    }
+    document.getElementById("holdShorterButton").addEventListener("click", holdShorter);
+
+    /***** Clear Button *****/
+    document.getElementById("clearButton").addEventListener("click", () => {
+        if (staffNotes.slice(2).some(n => n !== null) &&
+            !confirm("This will clear your current composition. Continue?")) {
+            return;
+        }
+        staffNotes = new Array(NUM_BEATS).fill(null);
+        selectedBeat = -1;
+        drawStaff();
+    });
+
+    /***** Submission Handling & Pagination *****/
+    const submissionForm = document.getElementById("submissionForm");
+    const submissionErrorDiv = document.getElementById("submissionError");
+    const submissionsTableBody = document.querySelector("#submissionsTable tbody");
+    const currentPageSpan = document.getElementById("currentPage");
+
+    // Fetch submissions with pagination. (Ensure your backend supports Pageable.)
+    function fetchSubmissions() {
+        fetch(`/api/submissions?page=${currentPage}&size=${PAGE_SIZE}`)
+            .then(response => response.json())
+            .then(data => {
+                updateSubmissionsTable(data.content);
+                currentPageSpan.textContent = `Page ${currentPage + 1}`;
+
+                document.getElementById("nextPage").disabled = currentPage >= data.page.totalPages - 1;
+                document.getElementById("prevPage").disabled = currentPage <= 0;
+            })
+            .catch(error => {
+                console.error("Error fetching submissions:", error);
+            });
+    }
+
+    // Update the submissions table
+    function updateSubmissionsTable(submissions) {
+        submissionsTableBody.innerHTML = "";
+        submissions.forEach(sub => {
+            submissionsTableBody.appendChild(createSubmissionRow(sub));
+        });
+    }
+
+    // Create a table row for a submission
+    function createSubmissionRow(submission) {
+        let tr = document.createElement("tr");
+
+        let tdName = document.createElement("td");
+        tdName.textContent = submission.name;
+
+        let tdTitle = document.createElement("td");
+        tdTitle.textContent = submission.title;
+
+        let tdComment = document.createElement("td");
+        tdComment.textContent = submission.comment;
+
+        let tdActions = document.createElement("td");
+        let playBtn = document.createElement("button");
+        playBtn.textContent = "Play";
+        playBtn.addEventListener("click", () => playSubmission(submission));
+        let loadBtn = document.createElement("button");
+        loadBtn.textContent = "Load";
+        loadBtn.addEventListener("click", () => loadSubmission(submission));
+
+        tdActions.appendChild(playBtn);
+        tdActions.appendChild(loadBtn);
+        tr.appendChild(tdName);
+        tr.appendChild(tdTitle);
+        tr.appendChild(tdComment);
+        tr.appendChild(tdActions);
+
+        return tr;
+    }
+
+    // Play a submission’s song
+    function playSubmission(submission) {
+        let song;
+        try {
+            song = JSON.parse(submission.song);
+        } catch (err) {
+            return alert("Invalid song data in submission.");
+        }
+        stopPlayback();
+        const tempo = 120;
+        const beatDuration = 60 / tempo;
+        let b = 2;
+        while (b < song.length) {
+            if (song[b] && !song[b].tied) {
+                let note = song[b];
+                let chainLength = 1;
+                while (b + chainLength < song.length &&
+                song[b + chainLength] &&
+                song[b + chainLength].tied &&
+                song[b + chainLength].pitch === note.pitch &&
+                song[b + chainLength].accidental === note.accidental) {
+                    chainLength++;
+                }
+                let duration = beatDuration * 0.9 * chainLength;
+                let timeoutId = setTimeout(() => {
+                    playTone(note, false, duration);
+                }, (b - 2) * beatDuration * 1000);
+                playTimeouts.push(timeoutId);
+                b += chainLength;
+                continue;
+            }
+            b++;
+        }
+        isPlaying = true;
+    }
+
+    // Load a submission’s song into the work area
+    function loadSubmission(submission) {
+        if (staffNotes.slice(2).some(n => n !== null) &&
+            !confirm("This will clear your current composition. Continue?")) {
+            return;
+        }
+        let song;
+        try {
+            song = JSON.parse(submission.song);
+        } catch (err) {
+            return alert("Invalid song data in submission.");
+        }
+        staffNotes = new Array(NUM_BEATS).fill(null);
+        for (let b = 0; b < NUM_BEATS; b++) {
+            if (song[b]) {
+                staffNotes[b] = { ...song[b] };
+            }
+        }
+        if (submission.instrument) {
+            currentInstrument = submission.instrument;
+            document.getElementById("instrumentSelect").value = currentInstrument;
+        }
+        selectedBeat = -1;
+        drawStaff();
+    }
+
+    // Submission Form: Only name is required; if title, comment, or composition are missing, show a confirm alert.
+    submissionForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const name = document.getElementById("submitName").value.trim();
+        const title = document.getElementById("submitTitle").value.trim();
+        const comment = document.getElementById("submitComment").value.trim();
+
+        if (!name) {
+            alert("Guest name is required.");
+            return;
+        }
+
+        let missingFields = [];
+        if (!title) missingFields.push("song title");
+        if (!comment) missingFields.push("message");
+        let compositionEmpty = staffNotes.slice(2).every(n => n === null);
+        if (compositionEmpty) missingFields.push("composition");
+
+        if (missingFields.length > 0) {
+            if (!confirm("The following fields are missing: " + missingFields.join(", ") + ". Do you want to proceed?")) {
+                return;
+            }
+        }
+
+        const submissionData = {
+            name: name,
+            title: title,
+            song: JSON.stringify(staffNotes),
+            comment: comment,
+            instrument: currentInstrument
+        };
+
+        fetch("/api/submissions/" + encodeURIComponent(name), {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(submissionData)
+        })
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 409) {
+                        throw new Error("A submission with this guest name already exists. Please choose a unique name.");
+                    } else {
+                        throw new Error("Error submitting composition.");
+                    }
+                }
+                return response.json();
+            })
+            .then(data => {
+                submissionErrorDiv.textContent = "";
+                submissionForm.reset();
+                // Clear the composition if necessary.
+                if (staffNotes.slice(2).some(n => n !== null)) {
+                    staffNotes = new Array(NUM_BEATS).fill(null);
+                    selectedBeat = -1;
+                    drawStaff();
+                }
+                // Refresh the submissions table (pagination will update automatically)
+                fetchSubmissions();
+            })
+            .catch(error => {
+                submissionErrorDiv.textContent = error.message;
+            });
+    });
+
+    // Pagination Controls
+    document.getElementById("prevPage").addEventListener("click", () => {
+        if (currentPage > 0) {
+            currentPage--;
+            fetchSubmissions();
+        }
+    });
+    document.getElementById("nextPage").addEventListener("click", () => {
+        // For simplicity, always allow next. In production, you might want to check if fewer than PAGE_SIZE items were returned.
+        currentPage++;
+        fetchSubmissions();
+    });
+
+    // Initial fetch and draw
+    fetchSubmissions();
+    drawStaff();
+</script>
+</body>
+</html>

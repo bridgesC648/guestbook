@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: guestbook
+  datasource:
+    url: jdbc:h2:file:./data/guestbook
+  jpa:
+    hibernate:
+      ddl-auto: update

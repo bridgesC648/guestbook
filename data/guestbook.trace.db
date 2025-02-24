@@ -1,0 +1,12 @@
+2025-02-23 00:38:27.409458-06:00 jdbc[3]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "SUBMISSION" not found (this database is empty); SQL statement:
+select s1_0.name,s1_0.comment,s1_0.song,s1_0.timestamp,s1_0.title from submission s1_0 order by s1_0.timestamp desc [42104-224]
+2025-02-23 00:38:32.377619-06:00 jdbc[3]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "SUBMISSION" not found (this database is empty); SQL statement:
+select count(*) from submission s1_0 where s1_0.name=? [42104-224]
+2025-02-23 12:47:44.031795-06:00 jdbc[3]: exception
+org.h2.jdbc.JdbcSQLDataException: Value too long for column "COMMENT CHARACTER VARYING(255)": "'asdf asdf asdf asdf asdf asdfasdf asdf asdf asdf asdf asdfasdf asdf asdf asdf a... (522)"; SQL statement:
+insert into submission (comment,instrument,song,timestamp,title,name) values (?,?,?,?,?,?) [22001-224]
+2025-02-23 12:48:16.960304-06:00 jdbc[3]: exception
+org.h2.jdbc.JdbcSQLDataException: Value too long for column "COMMENT CHARACTER VARYING(255)": "'asdf asdf asdf asdf asdf asdfasdf asdf asdf asdf asdf asdfasdf asdf asdf asdf a... (522)"; SQL statement:
+insert into submission (comment,instrument,song,timestamp,title,name) values (?,?,?,?,?,?) [22001-224]
