@@ -668,8 +668,8 @@
             for (let p = 1; p >= note.pitch; p -= 2) {
                 let ly = yForPitch(p);
                 ctx.beginPath();
-                ctx.moveTo(x - radius - 4, ly);
-                ctx.lineTo(x + radius + 4, ly);
+                ctx.moveTo(x - radius - 8, ly);
+                ctx.lineTo(x + radius + 8, ly);
                 ctx.stroke();
             }
         }
@@ -677,8 +677,8 @@
             for (let p = 13; p <= note.pitch; p += 2) {
                 let ly = yForPitch(p);
                 ctx.beginPath();
-                ctx.moveTo(x - radius - 4, ly);
-                ctx.lineTo(x + radius + 4, ly);
+                ctx.moveTo(x - radius - 8, ly);
+                ctx.lineTo(x + radius + 8, ly);
                 ctx.stroke();
             }
         }
