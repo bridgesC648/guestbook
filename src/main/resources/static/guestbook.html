@@ -89,7 +89,7 @@
 
         #trebleClef {
             position: absolute;
-            left: 156px;
+            left: 100px;
             top: 167px;
             height: 90px;
             opacity: 0.8;
@@ -302,12 +302,16 @@
         }
 
         th:nth-child(3), td:nth-child(3) {
-            width: 50%;
+            width: 48%;
         }
 
         th:nth-child(4), td:nth-child(4) {
-            width: 18%;
+            width: 20%;
             text-align: center;
+        }
+
+        th:not(:last-child), td:not(:last-child) {
+            border-right: 1px solid #ccc;
         }
 
         td:nth-child(4) button {
@@ -885,6 +889,7 @@
         }
     }
     window.addEventListener("keydown", e => {
+        if (selectedBeat > 0 && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
         if (selectedBeat < 1 || selectedBeat === -1) return;
         let chainIndices = getChainIndices(selectedBeat);
         switch (e.key) {
@@ -1231,6 +1236,7 @@
             .then(data => {
                 submissionErrorDiv.textContent = "";
                 submissionForm.reset();
+                document.getElementById("submitTitle").value = "";
                 // Clear the composition if necessary.
                 if (staffNotes.slice(2).some(n => n !== null)) {
                     staffNotes = new Array(NUM_BEATS).fill(null);
