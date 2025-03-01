@@ -7,7 +7,7 @@
     <style>
         :root {
             --primary-color: #3da5d9; /* Bright blue */
-            --secondary-color: #6c4675; /* Purple */
+            --secondary-color: rgb(180, 167, 126); /* Purple */
             --accent-color: #36b5a2; /* Aquamarine */
             --light-color: #e0f7fa; /* Very light aqua */
             --dark-color: #2c3e50; /* Dark slate */
@@ -17,10 +17,11 @@
 
         body {
             font-family: 'Montserrat', sans-serif;
-            background: linear-gradient(135deg, #f0f8ff, #e0f7fa);
+            background: #302133;
+            /*background: linear-gradient(135deg, #f0f8ff, #e0f7fa);*/
             margin: 0;
             padding: 0;
-            color: var(--dark-color);
+            color: var(--secondary-color);
         }
 
         .container {
@@ -34,6 +35,15 @@
             margin-bottom: 2rem;
             padding-bottom: 1rem;
             border-bottom: 1px solid rgba(108, 70, 117, 0.3);
+        }
+
+        h1 {
+            font-family: Limelight;
+            color: rgb(180, 167, 126);
+            font-weight: 400;
+            text-transform: uppercase;
+            line-height: 1;
+            letter-spacing: normal;
         }
 
         h1, h2, h3 {
