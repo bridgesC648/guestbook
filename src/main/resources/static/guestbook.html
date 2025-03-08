@@ -7,7 +7,7 @@
     <style>
         :root {
             --primary-color: #3da5d9; /* Bright blue */
-            --secondary-color: rgb(180, 167, 126); /* Purple */
+            --secondary-color: rgb(180, 167, 126); /* Gold */
             --accent-color: #36b5a2; /* Aquamarine */
             --light-color: #e0f7fa; /* Very light aqua */
             --dark-color: #2c3e50; /* Dark slate */
@@ -64,12 +64,16 @@
 
         /* Card styling for consistent appearance */
         .card {
-            background: white;
+            background: #f2f2f2;
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
             margin: 1.5rem auto;
             padding: 1.5rem;
             width: var(--card-width);
+        }
+
+        .card *:not(button):not(th) {
+            color: #7A6A2A;
         }
 
         /* Staff Area */
@@ -426,7 +430,10 @@
 <div class="container" style="margin-top: -100px;">
     <header>
         <h1>Christopher & Raymond's Musical Guestbook</h1>
-        <p>Share your melodic wishes for our special day</p>
+        <p>Share your melodic message for our special day</p>
+        <p>Writing music is optional! You can just skip it and simply sign.</p>
+        <p>If you'd like to write music, though: it's simple: click or tap on the lines to place a note. 𝄽 is a rest, meaning no sound is made. You can scroll down to look at and listen to what others have written!</p>
+        <p>There are more advanced music controls for those who want to mess with them. You can flat, sharp, or extend notes! Tapping to place a note is enough for most!</p>
     </header>
 
     <!-- Staff Area with title input -->
@@ -445,10 +452,10 @@
                     <div id="instrumentSelectContainer">
                         <label for="instrumentSelect">Instrument: </label>
                         <select id="instrumentSelect">
-                            <option value="sine">Sine</option>
-                            <option value="square">Square</option>
-                            <option value="sawtooth">Sawtooth</option>
-                            <option value="triangle">Triangle</option>
+                            <option value="sine">Boop</option>
+                            <option value="square">Ding</option>
+                            <option value="sawtooth">Twang</option>
+                            <option value="triangle">Bleep</option>
                         </select>
                     </div>
                     <button id="playButton">▶</button>
